@@ -1,9 +1,10 @@
 # from http://rubyquiz.com/quiz43.html
 
 require 'byebug'
+require 'set'
 
 class Tile
-  ONE_THRU_NINE = (1..9).to_a
+  ONE_THRU_NINE = (1..9).to_set
   attr_reader :x_axis, :y_axis, :int_possibilities
   attr_accessor :int, :board
   def initialize(x_axis, y_axis, int, board)
@@ -29,8 +30,7 @@ class Tile
   end
   def ninegroups_used_ints
     ng_used_ints = self.ninegroups.map {|ng| ng.used_ints}
-    ng_used_ints.uniq!
-    ng_used_ints
+    ng_used_ints.to_set
   end
   def find_int_possibilities
     ONE_THRU_NINE - self.ninegroups_used_ints
@@ -47,18 +47,23 @@ This is to be used in situations where one of a given set of tiles must be a
 particular integer.
 =end
   attr_accessor :int, :tiles
-  def initialize(int, tiles)
+  def initialize(int, tiles) # tiles should be a set
     @int = int
-    @tiles = tiles
+    @tiles = tiles.to_set
   end
   def ==(other)
     other.int == @int && other.tiles == @tiles
+  end
+  def eql?(other)
+    # not sure if I'll need this, but might as well make it while I'm thinking
+    # of it
+    other.instance_of?(self.class) && other == self
   end
 end
 
 class NineGroup
   attr_reader :tiles, :board
-  ONE_THRU_NINE = (1..9).to_a
+  ONE_THRU_NINE = (1..9).to_set
   def initialize(*args)
     @tiles = self.find_tiles
   end
@@ -69,10 +74,10 @@ class NineGroup
     self.unsolved_tiles.empty?
   end
   def used_ints
-    (@tiles.map {|tile| tile.int}).compact
+    (@tiles.map {|tile| tile.int}).compact.to_set
   end
   def unused_ints
-    ONE_THRU_NINE - self.unused_ints
+    ONE_THRU_NINE - self.used_ints
   end
 end
 
