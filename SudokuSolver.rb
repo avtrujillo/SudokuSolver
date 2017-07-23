@@ -12,6 +12,11 @@ class Tile
     @x_axis = x_axis
     @y_axis = y_axis
     @board = board
+    if @int
+      @int_possibilities = Set.new
+    else
+      @int_possibilities = (1..9).to_set
+    end
   end
   def row
     @board.rows.find {|row| row.y_axis == self.y_axis}
@@ -25,19 +30,15 @@ class Tile
       square.tiles.include?(self)
     end
   end
-  def ninegroups
-    [self.row, self.column, self.inner_square]
-  end
-  def ninegroups_used_ints
-    ng_used_ints = self.ninegroups.map {|ng| ng.used_ints}
-    ng_used_ints.to_set
-  end
-  def find_int_possibilities
-    ONE_THRU_NINE - self.ninegroups_used_ints
-  end
-  def int_update
-    @int_possibilities = self.find_int_possibilities
-    @int = @int_possibilities.first if @int_possibilities.count == 1
+  def update_int_possibilities(array_or_set_of_ints_to_be_removed)
+    @int_possibilities -= array_or_set_of_ints_to_be_removed
+    if @int_possibilities.count == 1
+      @int = @int_possibilities.first
+      @int_possibilities = Set.new
+    elsif
+      @int_possibilities.count == 0 && !@int
+      raise "zero possible integers for tile"
+    end
   end
 end
 
@@ -46,10 +47,11 @@ class MustContain
 This is to be used in situations where one of a given set of tiles must be a
 particular integer.
 =end
-  attr_accessor :int, :tiles
+  attr_accessor :int, :tiles, :solved
   def initialize(int, tiles) # tiles should be a set
     @int = int
     @tiles = tiles.to_set
+    @candidate_tiles = @tiles.dup
   end
   def ==(other)
     other.int == @int && other.tiles == @tiles
@@ -59,25 +61,36 @@ particular integer.
     # of it
     other.instance_of?(self.class) && other == self
   end
+  def update
+    @progress = false
+    return @progress if @solved # will return false
+    @progress = :removed_nil if @candidate_tiles.select! {|tile| tile.int.nil?}
+    if @candidate_tiles.count == 1
+      @candidate_tiles.to_a.first.int = @int
+      self.solution_found # will set @progress to true
+    elsif @tiles.find {|tile| tile.int == @int}
+      self.solution_found # will set @progress to true
+    elsif @candidate_tiles.select! {|tile| tile.int_possibilities.include?(@int)}
+      @progress = :removed_candidates
+    end
+    @progress
+  end
+  def solution_found
+    @tiles.each {|tile| tile.update_int_possibilities([@int])}
+    @candidate_tiles = Set.new
+    @progress = :solution
+    @solved = true
+  end
 end
 
 class NineGroup
-  attr_reader :tiles, :board
+  attr_reader :tiles, :board, :mustcontains
   ONE_THRU_NINE = (1..9).to_set
   def initialize(*args)
     @tiles = self.find_tiles
-  end
-  def unsolved_tiles
-    @tiles.select {|tile| tile.int.nil?}
-  end
-  def solved?
-    self.unsolved_tiles.empty?
-  end
-  def used_ints
-    (@tiles.map {|tile| tile.int}).compact.to_set
-  end
-  def unused_ints
-    ONE_THRU_NINE - self.used_ints
+    @mustcontains = (1..9).map do |int|
+      MustContain.new(int, @tiles)
+    end
   end
 end
 
@@ -146,7 +159,7 @@ module ImportBoard
     board_lines.map do |line|
       line.chars.inject(Array.new) do |ints, char|
         if (1..9).include?(char.to_i)
-          ints << char
+          ints << char.to_i
         elsif char == "_"
           ints << nil
         end
@@ -174,11 +187,44 @@ module ImportBoard
   end
 end
 
+module Solution
+  def solved?
+    (@tiles.select {|tile| tile.int.nil?}).empty?
+  end
+  def solve #unfinished
+    solution_state = nil
+    until self.solved?
+      self.print_board if @tiles.map {|tile| tile.int} != solution_state
+      solution_state = @tiles.map {|tile| tile.int}
+      progress = self.solution_iteration
+      raise "intractable" unless progress
+    end
+    self.print_board
+    puts "Solved!"
+  end
+  def solution_iteration
+    progress = nil
+    @mustcontains.each do |mc| progress = mc.update
+      return progress if progress
+    end
+    @tiles.each do |tile|
+      if tile.int_possibilities.count == 1
+        tile.int = tile.int_possibilities.first
+        progress = :narrow_int_possibilites
+        return progress
+      end
+    end
+    progress
+  end
+end
+
 class Board
   extend ImportBoard
-  attr_reader :tiles, :columns, :rows, :inner_squares
+  include Solution
+  attr_reader :tiles, :columns, :rows, :inner_squares, :mustcontains
   def initialize(tiles)
     @tiles = tiles
+    @mustcontains = Set.new
     self.create_columns
     self.create_rows
     self.create_inner_squares
@@ -186,13 +232,17 @@ class Board
   def create_rows
     @rows = Array.new
     for y in (1..9)
-      @rows << Row.new(y, self)
+      row = Row.new(y, self)
+      @rows << row
+      @mustcontains += row.mustcontains
     end
   end
   def create_columns
     @columns = Array.new
     for x in (1..9)
-      @columns << Column.new(x, self)
+      column = Column.new(x, self)
+      @columns << column
+      @mustcontains += column.mustcontains
     end
   end
   def create_inner_squares
@@ -200,7 +250,9 @@ class Board
     ranges = [(1..3), (4..6), (7..9)]
     range_pairs = ranges.repeated_permutation(2)
     range_pairs.each do |rp|
-      @inner_squares << InnerSquare.new(rp[0], rp[1], self)
+      inner_square = InnerSquare.new(rp[0], rp[1], self)
+      @inner_squares << inner_square
+      @mustcontains += inner_square.mustcontains
     end
   end
   HORIZONTAL_BAR = "+-------+-------+-------+"
@@ -210,18 +262,7 @@ class Board
       puts row.row_display_string
       puts HORIZONTAL_BAR if (y + 1) % 3 == 0
     end
-  end
-  def solved?
-    (@tiles.select {|tile| tile.int.nil?}).empty?
-  end
-  def solve #unfinished
-    self.print_board
-    foo = @tiles.map {|tile| tile.int}
-    until self.solved?
-      self.print_board unless foo == @tiles.map {|tile| tile.int}
-      foo = @tiles.map {|tile| tile.int}
-      @tiles.each {|tile| tile.int_update}
-    end
+    nil
   end
 end
 
