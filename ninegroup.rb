@@ -2,7 +2,7 @@
 # => Row, Column, and InnerSquare all inherit from it
 class NineGroup
   attr_reader :tiles, :board, :mustcontains
-  def initialize(board)
+  def initialize(*)
     @board = board
     @tiles = find_tiles
     raise "Has #{@tiles.count} tiles instead of 9" unless @tiles.count == 9
