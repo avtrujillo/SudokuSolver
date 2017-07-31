@@ -14,11 +14,7 @@ class Row < NineGroup
   def row_display_string
     row_string = (1..9).each_with_object('| ') do |x, rstring|
       tile = @tiles.find { |t| t.x_axis == x }
-      if tile.int
-        rstring << "#{tile.int} "
-      else
-        rstring << '_ '
-      end
+      rstring << (tile.int ? "#{tile.int} " : '_ ')
       rstring << '| ' if (x % 3).zero?
     end
     row_string
