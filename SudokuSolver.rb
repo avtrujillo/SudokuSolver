@@ -13,4 +13,4 @@ require_relative './importboard'
 require_relative './solution'
 require_relative './board'
 
-new_board = Board.create_board_from_input.solve
+Board.create_board_from_input.solve
