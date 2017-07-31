@@ -6,7 +6,7 @@ require 'set'
 class Tile
   ONE_THRU_NINE = (1..9).to_set
   attr_reader :x_axis, :y_axis, :int_possibilities
-  attr_accessor :int, :board
+  attr_accessor :board, :int
   def initialize(x_axis, y_axis, int, board)
     @int = int
     @x_axis = x_axis
@@ -31,6 +31,7 @@ class Tile
     end
   end
   def update_int_possibilities(array_or_set_of_ints_to_be_removed)
+    byebug if @x_axis == 6 && @y_axis == 5 && array_or_set_of_ints_to_be_removed.include?(2)
     @int_possibilities -= array_or_set_of_ints_to_be_removed
     if @int_possibilities.count == 1
       @int = @int_possibilities.first
@@ -47,10 +48,11 @@ class MustContain
 This is to be used in situations where one of a given set of tiles must be a
 particular integer.
 =end
-  attr_accessor :int, :tiles, :solved
+  attr_accessor :int, :tiles, :solved, :ninegroup
   def initialize(int, tiles) # tiles should be a set
     @int = int
     @tiles = tiles.to_set
+    raise "Has #{@tiles.count} tiles instead of 9" unless @tiles.count == 9
     @candidate_tiles = @tiles.dup
   end
   def ==(other)
@@ -65,10 +67,10 @@ particular integer.
     @progress = false
     return @progress if @solved # will return false
     @progress = :removed_nil if @candidate_tiles.select! {|tile| tile.int.nil?}
-    if @candidate_tiles.count == 1
-      @candidate_tiles.to_a.first.int = @int
+    if @tiles.find {|tile| tile.int == @int}
       self.solution_found # will set @progress to true
-    elsif @tiles.find {|tile| tile.int == @int}
+    elsif @candidate_tiles.count == 1
+      @candidate_tiles.to_a.first.int = @int
       self.solution_found # will set @progress to true
     elsif @candidate_tiles.select! {|tile| tile.int_possibilities.include?(@int)}
       @progress = :removed_candidates
@@ -76,7 +78,9 @@ particular integer.
     @progress
   end
   def solution_found
-    @tiles.each {|tile| tile.update_int_possibilities([@int])}
+    @tiles.each do |tile|
+      tile.update_int_possibilities([@int]) unless tile.int == @int
+    end
     @candidate_tiles = Set.new
     @progress = :solution
     @solved = true
@@ -88,8 +92,11 @@ class NineGroup
   ONE_THRU_NINE = (1..9).to_set
   def initialize(*args)
     @tiles = self.find_tiles
+    raise "Has #{@tiles.count} tiles instead of 9" unless @tiles.count == 9
     @mustcontains = (1..9).map do |int|
-      MustContain.new(int, @tiles)
+      mc = MustContain.new(int, @tiles)
+      mc.ninegroup = self
+      mc
     end
   end
 end
@@ -191,7 +198,7 @@ module Solution
   def solved?
     (@tiles.select {|tile| tile.int.nil?}).empty?
   end
-  def solve #unfinished
+  def solve
     solution_state = nil
     until self.solved?
       self.print_board if @tiles.map {|tile| tile.int} != solution_state
@@ -204,11 +211,20 @@ module Solution
   end
   def solution_iteration
     progress = nil
-    @mustcontains.each do |mc| progress = mc.update
+    bar = @mustcontains.find do |mc|
+      mc.ninegroup.is_a?(InnerSquare) &&
+      mc.int == 9 &&
+      mc.ninegroup.x_axis_range == (4..6) &&
+      mc.ninegroup.y_axis_range == (4..6)
+    end
+    @mustcontains.each do |mc|
+      progress = mc.update
       return progress if progress
     end
     @tiles.each do |tile|
       if tile.int_possibilities.count == 1
+        byebug if tile.int_possibilities.first == 9
+        byebug if tile.x_axis == 6 && tile.y_axis == 5
         tile.int = tile.int_possibilities.first
         progress = :narrow_int_possibilites
         return progress
