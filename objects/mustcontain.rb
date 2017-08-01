@@ -19,19 +19,49 @@ class MustContain
     other.instance_of?(self.class) && other == self
   end
 
-  def update
-    @progress = false
-    return @progress if @solved # will return false
-    @progress = :removed_nil if @candidate_tiles.select! { |tile| tile.int.nil? }
-    if @tiles.find { |tile| tile.int == @int }
-      solution_found # will set @progress to true
-    elsif @candidate_tiles.count == 1
+  Remove_nil_tiles = Proc.new do
+    if @candidate_tiles.select! { |tile| tile.int.nil? }
+      @progress = :removed_nil
+    end
+  end
+
+  Int_already_assigned_to_tile = Proc.new do
+    solution_found if @tiles.find { |tile| tile.int == @int }
+    # solution_found will set @progress to :solution
+  end
+
+  One_candidate_left =  Proc.new do
+    if @candidate_tiles.count == 1
       @candidate_tiles.to_a.first.int = @int
-      solution_found # will set @progress to true
-    elsif @candidate_tiles.select! { |tile| tile.int_possibilities.include?(@int) }
+      solution_found # solution_found will set @progress to :solution
+    end
+  end
+
+  Remove_tiles_without_int_as_a_possibility = Proc.new do
+    if @candidate_tiles.select! { |tile| tile.int_possibilities.include?(@int) }
       @progress = :removed_candidates
     end
-    @progress
+  end
+
+  Update_procs = [
+    Remove_nil_tiles,
+    Int_already_assigned_to_tile,
+    One_candidate_left,
+    Remove_tiles_without_int_as_a_possibility
+  ]
+
+  def update
+    @progress = nil
+    return progress if @solved
+    begin
+      (Update_procs).each do |p|
+        p.call
+        return progress if progress
+      end
+    rescue
+      byebug
+    end
+    nil
   end
 
   def solution_found
