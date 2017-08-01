@@ -19,26 +19,26 @@ class MustContain
     other.instance_of?(self.class) && other == self
   end
 
-  Remove_nil_tiles = Proc.new do |mc|
+  Remove_nil_tiles = proc do |mc|
     if mc.candidate_tiles.select! { |tile| tile.int.nil? }
       mc.progress = :removed_nil
     end
   end
 
-  Int_already_assigned_to_tile = Proc.new do |mc|
+  Int_already_assigned_to_tile = proc do |mc|
     mc.solution_found if mc.tiles.find { |tile| tile.int == mc.int }
     # solution_found will set @progress to :solution
   end
 
-  One_candidate_left =  Proc.new do |mc|
+  One_candidate_left = proc do |mc|
     if mc.candidate_tiles.count == 1
       mc.candidate_tiles.to_a.first.int = mc.int
       mc.solution_found # solution_found will set @progress to :solution
     end
   end
 
-  Remove_tiles_without_int_as_a_possibility = Proc.new do |mc|
-    select_proc = Proc.new do |tile, int|
+  Remove_tiles_without_int_as_a_possibility = proc do |mc|
+    select_proc = proc do |tile, int|
       tile.int_possibilities.include?(int)
     end
     if mc.candidate_tiles.select! { |tile| select_proc.call(tile, mc.int) }
@@ -51,19 +51,15 @@ class MustContain
     Int_already_assigned_to_tile,
     One_candidate_left,
     Remove_tiles_without_int_as_a_possibility
-  ]
+  ].freeze
 
   def update
     @progress = nil
     return progress if @solved
-    #begin
-      (Update_procs).each do |p|
-        p.call(self)
-        return progress if progress
-      end
-    #rescue
-    #  byebug
-    #end
+    Update_procs.each do |p|
+      p.call(self)
+      return progress if progress
+    end
     nil
   end
 
